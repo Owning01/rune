@@ -163,7 +163,9 @@ impl<S: 'static> Runtime<S> {
         let i = self.top_target(x, y)?;
         let n = &self.nodes[i];
         if !self.is_selectable(i) || n.has_primary_handler() || self.link_at(i, x, y).is_some() { return Some(i); }
-        let handles = |n: &Node| n.has_primary_handler() || n.focus.enabled;
+        // Selectable text inside a drag region drags the window: a label is not a hit target of
+        // its own, unlike the buttons and fields the region leaves alone.
+        let handles = |n: &Node| n.has_primary_handler() || n.focus.enabled || n.window_drag;
         let mut p = n.parent;
         while let Some(a) = p {
             if self.subtree_exiting(a) || !self.allowed(a) || self.nodes[a].handlers.modal.is_some() { break; }

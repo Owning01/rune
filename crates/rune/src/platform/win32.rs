@@ -3,6 +3,7 @@
 use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
 use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 use std::{cell::{Cell, RefCell}, collections::VecDeque, rc::Rc};
@@ -15,10 +16,12 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 mod cloak;
 mod dpi_drag;
+mod frame_hit;
 mod pointer;
 
 pub(crate) use cloak::Cloak;
 pub(crate) use dpi_drag::follow_suggested_rect;
+pub(crate) use frame_hit::{install as install_frame_hit, remove as remove_frame_hit};
 
 fn hwnd(window: &winit::window::Window) -> Option<HWND> {
     let RawWindowHandle::Win32(h) = window.window_handle().ok()?.as_raw() else { return None };
@@ -28,6 +31,17 @@ fn hwnd(window: &winit::window::Window) -> Option<HWND> {
 pub(crate) fn pointer_position() -> Option<(i32, i32)> {
     let mut p = POINT { x: 0, y: 0 };
     (unsafe { GetCursorPos(&mut p) } != 0).then_some((p.x, p.y))
+}
+
+/// Routes pointer moves to the window while Rune moves it, even outside its client area.
+pub(crate) fn capture_pointer(window: &winit::window::Window) {
+    if let Some(hwnd) = hwnd(window) {
+        unsafe { SetCapture(hwnd); }
+    }
+}
+
+pub(crate) fn release_pointer() {
+    unsafe { ReleaseCapture(); }
 }
 
 struct Input {

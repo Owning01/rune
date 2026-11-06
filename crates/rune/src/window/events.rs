@@ -356,6 +356,8 @@ impl<S: 'static> Host<S> {
                 self.secure_input.set(focused && l.visible && !l.occluded && rt.has_secure_focus());
                 rt.set_titlebar_inset(place_chrome(&l.window, chrome));
                 if !focused {
+                    #[cfg(target_os = "windows")]
+                    end_manual_drag(&mut self.manual_drag);
                     rt.cancel_composition();
                     l.window.set_ime_allowed(false);
                     self.ime_allowed = false;
@@ -444,6 +446,8 @@ impl<S: 'static> Host<S> {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
+                #[cfg(target_os = "windows")]
+                move_manual_drag(&self.manual_drag, &l.window);
                 rt.pointer_move(position.x as f32 / scale, position.y as f32 / scale);
                 // AppKit needs the drag session started inside this mouse-dragged event.
                 if let Some(start) = rt.take_drag_out() {
@@ -471,6 +475,11 @@ impl<S: 'static> Host<S> {
                 if state == ElementState::Pressed {
                     self.control_click = cfg!(target_os = "macos") && self.mods.control_key();
                 }
+                // The release can arrive without a pointer position after capture ends.
+                if state == ElementState::Released {
+                    #[cfg(target_os = "windows")]
+                    end_manual_drag(&mut self.manual_drag);
+                }
                 if let Some((x, y)) = rt.pointer() {
                     match (state, self.control_click) {
                         (ElementState::Pressed, true) => rt.secondary_down(x, y),
@@ -483,6 +492,9 @@ impl<S: 'static> Host<S> {
                             // AppKit needs the drag started inside this mouse-down.
                             match rt.take_titlebar_action() {
                                 Some(TitlebarAction::Drag) => {
+                                    #[cfg(target_os = "windows")]
+                                    begin_manual_drag(&mut self.manual_drag, &l.window);
+                                    #[cfg(not(target_os = "windows"))]
                                     let _ = l.window.drag_window();
                                 }
                                 Some(TitlebarAction::DoubleClick) => titlebar_double_click(&l.window),
@@ -515,6 +527,33 @@ impl<S: 'static> Host<S> {
             }
             _ => {}
         }
+    }
+}
+
+/// Starts a window move on Windows, where winit's system drag loop stops at the first move.
+#[cfg(target_os = "windows")]
+fn begin_manual_drag(drag: &mut Option<ManualDrag>, window: &Window) {
+    let Some(cursor) = crate::platform::win32::pointer_position() else { return };
+    let Ok(outer) = window.outer_position() else { return };
+    *drag = Some(ManualDrag { start_cursor: cursor, start_outer: (outer.x, outer.y) });
+    crate::platform::win32::capture_pointer(window);
+}
+
+/// Moves the window with the pointer, from the press's screen position.
+#[cfg(target_os = "windows")]
+fn move_manual_drag(drag: &Option<ManualDrag>, window: &Window) {
+    let Some(drag) = drag else { return };
+    let Some((x, y)) = crate::platform::win32::pointer_position() else { return };
+    let _ = window.set_outer_position(winit::dpi::PhysicalPosition::new(
+        drag.start_outer.0 + (x - drag.start_cursor.0),
+        drag.start_outer.1 + (y - drag.start_cursor.1),
+    ));
+}
+
+#[cfg(target_os = "windows")]
+fn end_manual_drag(drag: &mut Option<ManualDrag>) {
+    if drag.take().is_some() {
+        crate::platform::win32::release_pointer();
     }
 }
 

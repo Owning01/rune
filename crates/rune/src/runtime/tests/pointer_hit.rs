@@ -356,6 +356,22 @@ fn presses_on_a_window_drag_region_move_the_window_but_not_its_buttons() {
 }
 
 #[test]
+fn pressing_selectable_text_in_a_window_drag_region_moves_the_window() {
+    fn view(_: &(), _: &mut Cx<()>) -> El {
+        col().size(200.0, 200.0)
+            .child(crate::el::row().key("titlebar").size(200.0, 40.0).window_drag()
+                .child(crate::text("Title").selectable(true).w(100.0)))
+            .child(el().key("body").size(200.0, 40.0))
+    }
+    let mut rt = Runtime::new((), view, (200.0, 200.0), Env::new(true, 1.0));
+    rt.frame(0.0);
+    rt.pointer_move(50.0, 20.0);
+    rt.pointer_down(50.0, 20.0);
+    assert_eq!(rt.take_titlebar_action(), Some(TitlebarAction::Drag));
+    rt.pointer_up(50.0, 20.0);
+}
+
+#[test]
 fn a_double_press_on_nothing_in_the_native_titlebar_band_takes_the_titlebar_action() {
     fn view(_: &(), _: &mut Cx<()>) -> El {
         col().size(200.0, 200.0).child(el().key("button").size(40.0, 40.0).on_press(|_: &mut ()| {}))

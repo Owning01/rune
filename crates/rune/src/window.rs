@@ -314,6 +314,17 @@ impl ApplicationHandler<WakeEvent> for Windows {
 
 use file_drop::{DROP_SAMPLE, FileDrop, FileStep};
 
+/// A window drag Rune runs itself: winit's `drag_window` posts `WM_NCLBUTTONDOWN`, but its own
+/// window procedure cancels the system move loop with a dummy mouse move, so the window stops
+/// after the first pixel. Tracking the pointer and moving the window keeps the drag exact.
+#[cfg(target_os = "windows")]
+struct ManualDrag {
+    /// Screen position where the press started, in physical pixels.
+    start_cursor: (i32, i32),
+    /// Outer position the window had at that press.
+    start_outer: (i32, i32),
+}
+
 struct Host<S: 'static> {
     chrome: Chrome,
     options: WindowOptions,
@@ -347,6 +358,9 @@ struct Host<S: 'static> {
     menus: crate::native_menu::Guard<S>,
     popup: crate::popup_menu::Presenter,
     file_dialog: crate::file_dialog::Presenter,
+    /// A `.window_drag()` press in progress, moved by `CursorMoved` on Windows.
+    #[cfg(target_os = "windows")]
+    manual_drag: Option<ManualDrag>,
     rt: Runtime<S>,
     /// Before `win` and `gpu`: fields drop in order, and the trace waits for the window's last
     /// present times.
@@ -494,6 +508,8 @@ impl<S: 'static> Host<S> {
             menus,
             popup,
             file_dialog,
+            #[cfg(target_os = "windows")]
+            manual_drag: None,
             rt,
             win: None,
             gpu: None,
@@ -770,6 +786,13 @@ impl<S: 'static> Host<S> {
         let window = Arc::new(event_loop.create_window(attrs).map_err(|e| e.to_string())?);
         #[cfg(target_os = "windows")]
         crate::platform::win32::follow_suggested_rect(&window);
+        #[cfg(target_os = "windows")]
+        crate::platform::win32::install_frame_hit(
+            &window,
+            self.options.borderless,
+            self.options.resizable,
+            window.scale_factor() as f32,
+        );
         #[cfg(target_os = "windows")]
         let cloak = crate::platform::win32::Cloak::default();
         #[cfg(target_os = "windows")]

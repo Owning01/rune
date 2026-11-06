@@ -43,6 +43,13 @@ pub(super) struct Win {
     pub(super) steady_frame: bool,
 }
 
+impl Drop for Win {
+    fn drop(&mut self) {
+        #[cfg(target_os = "windows")]
+        crate::platform::win32::remove_frame_hit(&self.window);
+    }
+}
+
 impl Win {
     /// Matches the drawable to the window's size; false when it already did.
     pub(super) fn resize_surface(&mut self, device: &wgpu::Device, size: winit::dpi::PhysicalSize<u32>) -> bool {
